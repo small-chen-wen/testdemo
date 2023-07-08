@@ -6,16 +6,17 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import scipy
 import os
+from torchsummary import summary
 
-mode = 4                            #选择自己训练模型（1）、用模型跑mse（2）、用模型生成数据（3）, 查看mat数据标签（4）
-Filter = 16                         #过滤器F数量
-intputfile = "./output_file.mat"    #输入文件x
-outputfile = "./testoutput.mat"   #输出文件y
+mode = 2                                        #选择自己训练模型（1）、用模型跑mse（2）、用模型生成数据（3）, 查看mat数据标签（4）
+Filter = 16                                     #过滤器F数量
+intputfile = "./output_file.mat"      #输入文件x
+outputfile = "./output_filey.mat"                 #输出文件y
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-saved_model = "./model0.pth"        #已经训练好的模型
-labelx = "data"                     #输入文件的标签
-labely = "data"                     #输出文件的标签
-output_model = "model.pth"          #自己训练保存的路径
+saved_model = "./model0.pth"                    #已经训练好的模型
+labelx = "data"                                 #输入文件的标签
+labely = "data"                                 #输出文件的标签
+output_model = "model.pth"                      #自己训练保存的路径
 criterion = nn.MSELoss()
 
 
@@ -89,7 +90,7 @@ def main():
     elif mode == 4:
         look_data_label()
     else:
-        print("请选择正确的mode，自己训练模型（1）、用模型跑mse（2）、用模型生成数据（3）")
+        print("请选择正确的mode，自己训练模型（1）、用模型跑mse（2）、用模型生成数据（3）,查看mat数据标签（4）")
     
 def train():
     #读取文件
@@ -110,7 +111,6 @@ def train():
     criterion = nn.MSELoss()
     optimizer = Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
-
    
     num_epochs = 100
     train_losses = []
@@ -176,6 +176,7 @@ def test_model(saved_model):
             validation_loss += loss.item()
     validation_loss /= len(data_loader)
     print('Validation Loss: {:.4f}'.format(validation_loss))
+    summary(model, input_size=data_x.shape[1:])
     
 def use_model(saved_model):
     data_x = torch.Tensor(scipy.io.loadmat(intputfile)[labelx]).to(device)
@@ -197,7 +198,7 @@ def use_model(saved_model):
                 ans = torch.cat((ans, model(x_validation)))
     ans = ans.permute(0,2,3,1)
     scipy.io.savemat(outputfile, {labely:ans.cpu().numpy()})
-    print(ans.shape)
+    print("model paramters:",summary(model, input_size=data_x.shape[1:]))
         
 def look_data_label():
     if os.path.exists(intputfile):
