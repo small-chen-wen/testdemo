@@ -1,3 +1,12 @@
+"""
+前面设置了一些参数，主要是模型训练中需要的，都有注释。
+函数：
+main():主要是进行跳转，根据前面的参数mode进行训练模型或者跑模型。有四种选择，下面进行阐述。
+1.train()：mode=1，设置mode为1，进行模型的训练，里面都是模型训练需要设置的参数，如学习率、训练轮次，最后保存模型
+2.test_model(), 利用已经保存好的模型，进行计算mse，对给定的输入和输出，模型根据输入得到预测数据，之后和输出进行计算误差。
+3.use_model(), 使用模型，只给输入数据，模型根据输入数据，得出预测的输出数据。
+"""
+
 import torch
 import torch.nn as nn
 from torch.optim import Adam
@@ -7,24 +16,29 @@ from torch.utils.data import DataLoader
 import scipy
 import os
 from torchsummary import summary
+import  h5py
 
-mode = 2                                        #选择自己训练模型（1）、用模型跑mse（2）、用模型生成数据（3）, 查看mat数据标签（4）
+mode = 1                                        #选择自己训练模型（1）、用模型跑mse（2）、用模型生成数据（3）, 查看mat数据标签（4）
 Filter = 16                                     #过滤器F数量
-intputfile = "./output_file.mat"      #输入文件x
-outputfile = "./output_filey.mat"                 #输出文件y
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+intputfile = "./input15dB.mat"      #输入文件x
+outputfile = "./out15dB.mat"                 #输出文件y
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   #模型训练预测是用显卡（cuda）还是cpu
 saved_model = "./model0.pth"                    #已经训练好的模型
-labelx = "data"                                 #输入文件的标签
-labely = "data"                                 #输出文件的标签
-output_model = "model.pth"                      #自己训练保存的路径
+labelx = "X_DL"                                 #输入文件的标签
+labely = "Y_DL"                                 #输出文件的标签
+output_model = "small_model_F16.pth"                      #自己训练保存的路径
+image_train_losses = "small_model_F16_train_losses.png"
+image_val_losses = "small_model_F16_val_losses.png"
 criterion = nn.MSELoss()
 
 
-def load_dataset(intputfile, outputfile):
+def load_dataset(inputfile, outputfile):
     #读取文件
-    data_x = torch.Tensor(scipy.io.loadmat(intputfile)[labelx]).to(device)
-    data_y = torch.Tensor(scipy.io.loadmat(outputfile)[labely]).to(device)
-    return data_x, data_y
+    with h5py.File(inputfile, 'r') as hf:
+        data_x = torch.Tensor(hf[labelx][:]).to(device)
+    with h5py.File(outputfile, 'r') as hf:
+        data_y = torch.Tensor(hf[labely][:]).to(device)
+    return data_x.permute(3, 2, 1, 0), data_y.permute(3, 2, 1, 0)
 
 class ResBlock(nn.Module):
     def __init__(self, in_channels):
@@ -112,7 +126,7 @@ def train():
     optimizer = Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
    
-    num_epochs = 100
+    num_epochs = 200
     train_losses = []
     validation_losses = []
 
@@ -146,27 +160,29 @@ def train():
         scheduler.step(validation_loss)
 
     # Save the model
-    torch.save(model.state_dict(), './model.pth')
+    torch.save(model.state_dict(), output_model)
 
     # Plotting the training and validation loss
     plt.figure()
     plt.plot(train_losses, label='Train Loss')
     plt.legend()
-    plt.savefig('train_losses.png')
+    plt.savefig(image_train_losses)
     plt.plot(validation_losses, label='Validation Loss')
     plt.legend()
-    plt.savefig('val_losses.png')
+    plt.savefig(image_val_losses)
 
 def test_model(saved_model):
     data_x, data_y = load_dataset(intputfile, outputfile)
+
     data_x = data_x.permute(0, 3, 1, 2)
     data_y = data_y.permute(0, 3, 1, 2)
     data = torch.utils.data.TensorDataset(data_x, data_y)
     data_loader = DataLoader(data, batch_size=8, shuffle=False)
     model = Network()
+    model.load_state_dict(torch.load(saved_model, map_location=device))
     model.to(device)
-    model.load_state_dict(torch.load(saved_model))
     model.eval()
+
     validation_loss = 0
     criterion = nn.MSELoss()
     with torch.no_grad():
@@ -176,6 +192,7 @@ def test_model(saved_model):
             validation_loss += loss.item()
     validation_loss /= len(data_loader)
     print('Validation Loss: {:.4f}'.format(validation_loss))
+
     summary(model, input_size=data_x.shape[1:])
     
 def use_model(saved_model):
