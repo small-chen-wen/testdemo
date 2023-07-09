@@ -26,12 +26,12 @@ import os
 from torchsummary import summary
 import  h5py
 
-mode = 1                                        #选择自己训练模型（1）、用模型跑mse（2）、用模型生成数据（3）, 查看mat数据标签（4）
+mode = 2                                        #选择自己训练模型（1）、用模型跑mse（2）、用模型生成数据（3）, 查看mat数据标签（4）
 Filter = 6                                     #过滤器F数量
-intputfile = "./input15dB.mat"      #输入文件x
-outputfile = "./out15dB.mat"                 #输出文件y
+intputfile = "./20dBinput.mat"      #输入文件x
+outputfile = "./20dBoutput.mat"                 #输出文件y
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   #模型训练预测是用显卡（cuda）还是cpu
-saved_model = "./model0.pth"                    #已经训练好的模型
+saved_model = "./small_model_F6.pth"                    #已经训练好的模型
 labelx = "X_DL"                                 #输入文件的标签
 labely = "Y_DL"                                 #输出文件的标签
 output_model = "small_model_F"+ str(Filter) + ".pth"                      #自己训练保存的路径
@@ -229,7 +229,7 @@ def use_model(saved_model):
     #导入训练好的模型
     model = Network()
     model.to(device)
-    model.load_state_dict(torch.load(saved_model))
+    model.load_state_dict(torch.load(saved_model, map_location=device))
     model.eval()
     
     #用训练好的模型计算预测的数据
@@ -241,8 +241,12 @@ def use_model(saved_model):
             else:
                 ans = torch.cat((ans, model(x_validation)))
     ans = ans.permute(0,2,3,1)
-    scipy.io.savemat(outputfile, {labely:ans.cpu().numpy()})
-    print("model paramters:",summary(model, input_size=data_x.shape[1:]))
+
+    # 将得出的数据写入到outputfile文件中
+    with h5py.File(outputfile, 'w') as f:
+        f.create_dataset(labely, data = ans)
+    
+    summary(model, input_size=data_x.shape[1:])
         
 def look_data_label():
     if os.path.exists(intputfile):
